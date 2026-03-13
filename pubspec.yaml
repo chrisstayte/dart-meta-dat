@@ -1,5 +1,5 @@
 name: meta_dat
-description: A Flutter plugin wrapping the Meta Wearables Device Access Toolkit (DAT) iOS SDK for building hands-free wearable experiences with Meta AI glasses.
+description: A Flutter plugin wrapping the Meta Wearables Device Access Toolkit (DAT) SDK for building hands-free wearable experiences with Meta AI glasses.
 version: 0.1.0
 homepage: https://github.com/chrisstayte/dart-meta-dat
 repository: https://github.com/chrisstayte/dart-meta-dat
@@ -22,5 +22,8 @@ dev_dependencies:
 flutter:
   plugin:
     platforms:
+      android:
+        package: com.chrisstayte.meta_dat
+        pluginClass: MetaDatPlugin
       ios:
         pluginClass: MetaDatPlugin

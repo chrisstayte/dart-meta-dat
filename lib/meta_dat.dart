@@ -1,5 +1,7 @@
 /// A Flutter plugin wrapping the Meta Wearables Device Access Toolkit (DAT)
-/// iOS SDK for building hands-free wearable experiences with Meta AI glasses.
+/// SDK for building hands-free wearable experiences with Meta AI glasses.
+///
+/// Supports both iOS and Android platforms.
 ///
 /// ## Getting Started
 ///
