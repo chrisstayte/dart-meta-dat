@@ -1,6 +1,14 @@
 import Flutter
 import UIKit
 
+#if canImport(MWDATCore)
+import MWDATCore
+#endif
+
+#if canImport(MWDATCamera)
+import MWDATCamera
+#endif
+
 public class MetaDatPlugin: NSObject, FlutterPlugin {
 
     private var registrationStateChannel: FlutterEventChannel?
@@ -9,7 +17,14 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
     private var registrationStateSink: FlutterEventSink?
     private var devicesSink: FlutterEventSink?
 
-    // Track active stream sessions and their event channels/sinks
+    private var messenger: FlutterBinaryMessenger?
+
+    // Track active stream sessions
+    #if canImport(MWDATCamera)
+    private var streamSessions: [String: StreamSession] = [:]
+    #endif
+
+    // Track event channels and sinks per session
     private var streamSessionStateChannels: [String: FlutterEventChannel] = [:]
     private var streamSessionVideoFrameChannels: [String: FlutterEventChannel] = [:]
     private var streamSessionErrorChannels: [String: FlutterEventChannel] = [:]
@@ -26,6 +41,7 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
             binaryMessenger: registrar.messenger()
         )
         let instance = MetaDatPlugin()
+        instance.messenger = registrar.messenger()
         registrar.addMethodCallDelegate(instance, channel: channel)
 
         // Set up event channels
@@ -332,8 +348,8 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
         let deviceSelector: DeviceSelector
         if selectorType == "specific",
            let deviceId = selectorMap["deviceIdentifier"] as? String,
-           let identifier = Wearables.shared.deviceForIdentifier(DeviceIdentifier(deviceId)) {
-            deviceSelector = SpecificDeviceSelector(wearables: Wearables.shared, device: identifier)
+           let device = Wearables.shared.deviceForIdentifier(DeviceIdentifier(deviceId)) {
+            deviceSelector = SpecificDeviceSelector(wearables: Wearables.shared, device: device)
         } else {
             deviceSelector = AutoDeviceSelector(wearables: Wearables.shared)
         }
@@ -343,8 +359,12 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
             deviceSelector: deviceSelector
         )
 
-        // Store session reference (would need a dictionary to track sessions)
-        // For now, return the session ID
+        // Store session for later use
+        streamSessions[sessionId] = streamSession
+
+        // Set up event channels for this session
+        setupStreamSessionEventChannels(sessionId: sessionId, session: streamSession)
+
         result(sessionId)
         #else
         result(FlutterError(
@@ -358,7 +378,7 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
     private func handleStartStreamSession(call: FlutterMethodCall, result: @escaping FlutterResult) {
         #if canImport(MWDATCamera)
         guard let args = call.arguments as? [String: Any],
-              let _ = args["sessionId"] as? String else {
+              let sessionId = args["sessionId"] as? String else {
             result(FlutterError(
                 code: "INVALID_ARGUMENT",
                 message: "Invalid session ID.",
@@ -367,8 +387,21 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
             return
         }
 
-        // Start the stream session
-        result(nil)
+        guard let session = streamSessions[sessionId] else {
+            result(FlutterError(
+                code: "SESSION_NOT_FOUND",
+                message: "Stream session not found for ID: \(sessionId)",
+                details: nil
+            ))
+            return
+        }
+
+        Task {
+            await session.start()
+            DispatchQueue.main.async {
+                result(nil)
+            }
+        }
         #else
         result(FlutterError(
             code: "SDK_NOT_AVAILABLE",
@@ -381,7 +414,7 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
     private func handleStopStreamSession(call: FlutterMethodCall, result: @escaping FlutterResult) {
         #if canImport(MWDATCamera)
         guard let args = call.arguments as? [String: Any],
-              let _ = args["sessionId"] as? String else {
+              let sessionId = args["sessionId"] as? String else {
             result(FlutterError(
                 code: "INVALID_ARGUMENT",
                 message: "Invalid session ID.",
@@ -390,7 +423,21 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
             return
         }
 
-        result(nil)
+        guard let session = streamSessions[sessionId] else {
+            result(FlutterError(
+                code: "SESSION_NOT_FOUND",
+                message: "Stream session not found for ID: \(sessionId)",
+                details: nil
+            ))
+            return
+        }
+
+        Task {
+            await session.stop()
+            DispatchQueue.main.async {
+                result(nil)
+            }
+        }
         #else
         result(FlutterError(
             code: "SDK_NOT_AVAILABLE",
@@ -403,7 +450,7 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
     private func handleCapturePhoto(call: FlutterMethodCall, result: @escaping FlutterResult) {
         #if canImport(MWDATCamera)
         guard let args = call.arguments as? [String: Any],
-              let _ = args["sessionId"] as? String else {
+              let sessionId = args["sessionId"] as? String else {
             result(FlutterError(
                 code: "INVALID_ARGUMENT",
                 message: "Invalid session ID.",
@@ -412,6 +459,18 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
             return
         }
 
+        guard let session = streamSessions[sessionId] else {
+            result(FlutterError(
+                code: "SESSION_NOT_FOUND",
+                message: "Stream session not found for ID: \(sessionId)",
+                details: nil
+            ))
+            return
+        }
+
+        let formatStr = args["format"] as? String ?? "jpeg"
+        let format: PhotoFormat = formatStr == "heic" ? .heic : .jpeg
+        session.capturePhoto(format: format)
         result(nil)
         #else
         result(FlutterError(
@@ -425,7 +484,7 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
     private func handleGetStreamSessionState(call: FlutterMethodCall, result: @escaping FlutterResult) {
         #if canImport(MWDATCamera)
         guard let args = call.arguments as? [String: Any],
-              let _ = args["sessionId"] as? String else {
+              let sessionId = args["sessionId"] as? String else {
             result(FlutterError(
                 code: "INVALID_ARGUMENT",
                 message: "Invalid session ID.",
@@ -434,7 +493,16 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
             return
         }
 
-        result("stopped")
+        guard let session = streamSessions[sessionId] else {
+            result(FlutterError(
+                code: "SESSION_NOT_FOUND",
+                message: "Stream session not found for ID: \(sessionId)",
+                details: nil
+            ))
+            return
+        }
+
+        result(streamSessionStateToString(session.state))
         #else
         result(FlutterError(
             code: "SDK_NOT_AVAILABLE",
@@ -454,6 +522,11 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
             ))
             return
         }
+
+        // Remove session reference
+        #if canImport(MWDATCamera)
+        streamSessions.removeValue(forKey: sessionId)
+        #endif
 
         // Clean up event channels for this session
         streamSessionStateChannels.removeValue(forKey: sessionId)
@@ -495,6 +568,135 @@ public class MetaDatPlugin: NSObject, FlutterPlugin {
         }
         #endif
     }
+
+    #if canImport(MWDATCamera)
+    private func setupStreamSessionEventChannels(sessionId: String, session: StreamSession) {
+        guard let messenger = self.messenger else { return }
+
+        // State event channel
+        let stateChannel = FlutterEventChannel(
+            name: "meta_dat/stream_session/\(sessionId)/state",
+            binaryMessenger: messenger
+        )
+        stateChannel.setStreamHandler(
+            EventStreamHandler { [weak self] sink in
+                self?.streamSessionStateSinks[sessionId] = sink
+            } onCancel: { [weak self] in
+                self?.streamSessionStateSinks[sessionId] = nil
+            }
+        )
+        streamSessionStateChannels[sessionId] = stateChannel
+
+        // Video frame event channel
+        let videoFrameChannel = FlutterEventChannel(
+            name: "meta_dat/stream_session/\(sessionId)/video_frame",
+            binaryMessenger: messenger
+        )
+        videoFrameChannel.setStreamHandler(
+            EventStreamHandler { [weak self] sink in
+                self?.streamSessionVideoFrameSinks[sessionId] = sink
+            } onCancel: { [weak self] in
+                self?.streamSessionVideoFrameSinks[sessionId] = nil
+            }
+        )
+        streamSessionVideoFrameChannels[sessionId] = videoFrameChannel
+
+        // Error event channel
+        let errorChannel = FlutterEventChannel(
+            name: "meta_dat/stream_session/\(sessionId)/error",
+            binaryMessenger: messenger
+        )
+        errorChannel.setStreamHandler(
+            EventStreamHandler { [weak self] sink in
+                self?.streamSessionErrorSinks[sessionId] = sink
+            } onCancel: { [weak self] in
+                self?.streamSessionErrorSinks[sessionId] = nil
+            }
+        )
+        streamSessionErrorChannels[sessionId] = errorChannel
+
+        // Photo data event channel
+        let photoDataChannel = FlutterEventChannel(
+            name: "meta_dat/stream_session/\(sessionId)/photo_data",
+            binaryMessenger: messenger
+        )
+        photoDataChannel.setStreamHandler(
+            EventStreamHandler { [weak self] sink in
+                self?.streamSessionPhotoDataSinks[sessionId] = sink
+            } onCancel: { [weak self] in
+                self?.streamSessionPhotoDataSinks[sessionId] = nil
+            }
+        )
+        streamSessionPhotoDataChannels[sessionId] = photoDataChannel
+
+        // Subscribe to session publishers
+        _ = session.statePublisher.listen { [weak self] state in
+            DispatchQueue.main.async {
+                self?.streamSessionStateSinks[sessionId]?(
+                    self?.streamSessionStateToString(state) ?? "stopped"
+                )
+            }
+        }
+
+        _ = session.videoFramePublisher.listen { [weak self] videoFrame in
+            guard let uiImage = videoFrame.makeUIImage(),
+                  let imageData = uiImage.jpegData(compressionQuality: 0.8) else { return }
+            let frameData: [String: Any] = [
+                "data": FlutterStandardTypedData(bytes: imageData),
+                "width": Int(uiImage.size.width),
+                "height": Int(uiImage.size.height),
+                "timestamp": Int(Date().timeIntervalSince1970 * 1000)
+            ]
+            DispatchQueue.main.async {
+                self?.streamSessionVideoFrameSinks[sessionId]?(frameData)
+            }
+        }
+
+        _ = session.errorPublisher.listen { [weak self] error in
+            DispatchQueue.main.async {
+                self?.streamSessionErrorSinks[sessionId]?(
+                    self?.streamSessionErrorToString(error) ?? "internalError"
+                )
+            }
+        }
+
+        _ = session.photoDataPublisher.listen { [weak self] photoData in
+            let photoMap: [String: Any] = [
+                "data": FlutterStandardTypedData(bytes: photoData.data),
+                "format": "jpeg"
+            ]
+            DispatchQueue.main.async {
+                self?.streamSessionPhotoDataSinks[sessionId]?(photoMap)
+            }
+        }
+    }
+
+    private func streamSessionStateToString(_ state: StreamSessionState) -> String {
+        switch state {
+        case .stopped: return "stopped"
+        case .waitingForDevice: return "waitingForDevice"
+        case .starting: return "starting"
+        case .streaming: return "streaming"
+        case .stopping: return "stopping"
+        case .paused: return "paused"
+        @unknown default: return "stopped"
+        }
+    }
+
+    private func streamSessionErrorToString(_ error: StreamSessionError) -> String {
+        switch error {
+        case .internalError: return "internalError"
+        case .deviceNotFound: return "deviceNotFound"
+        case .deviceNotConnected: return "deviceNotConnected"
+        case .timeout: return "timeout"
+        case .videoStreamingError: return "videoStreamingError"
+        case .permissionDenied: return "permissionDenied"
+        case .hingesClosed: return "hingesClosed"
+        case .thermalCritical: return "thermalCritical"
+        @unknown default: return "internalError"
+        }
+    }
+    #endif
 
     #if canImport(MWDATCore)
     private func registrationStateToString(_ state: RegistrationState) -> String {
