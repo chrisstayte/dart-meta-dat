@@ -118,7 +118,7 @@ dependencies {
 }
 ```
 
-> **Note:** You need a GitHub Personal Access Token with `read:packages` scope. See the [Android SDK documentation](https://github.com/facebook/meta-wearables-dat-android) for details.
+> **Note:** You need a GitHub Personal Access Token with `read:packages` scope. Set it as a `GITHUB_TOKEN` environment variable, or add `github_token=YOUR_TOKEN` to your `android/local.properties` file. See the [Android SDK documentation](https://github.com/facebook/meta-wearables-dat-android) for details.
 
 #### 2. Configure AndroidManifest.xml
 

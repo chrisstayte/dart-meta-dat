@@ -781,7 +781,7 @@ class MetaDatPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                             streamSessionVideoFrameSinks[sessionId]?.success(frameData)
                         }
                     } catch (e: Exception) {
-                        // Frame processing error
+                        android.util.Log.e("MetaDatPlugin", "Video frame processing error", e)
                     }
                 }
                 null
@@ -833,7 +833,7 @@ class MetaDatPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                             streamSessionPhotoDataSinks[sessionId]?.success(photoMap)
                         }
                     } catch (e: Exception) {
-                        // Photo data processing error
+                        android.util.Log.e("MetaDatPlugin", "Photo data processing error", e)
                     }
                 }
                 null
