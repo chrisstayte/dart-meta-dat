@@ -1,8 +1,8 @@
 # meta_dat
 
-A Flutter plugin wrapping the [Meta Wearables Device Access Toolkit (DAT)](https://github.com/facebook/meta-wearables-dat-ios) iOS SDK for building hands-free wearable experiences with Meta AI glasses (Ray-Ban Meta smart glasses and Meta Ray-Ban Display glasses).
+A Flutter plugin wrapping the [Meta Wearables Device Access Toolkit (DAT)](https://wearables.developer.meta.com/) SDK for building hands-free wearable experiences with Meta AI glasses (Ray-Ban Meta smart glasses and Meta Ray-Ban Display glasses).
 
-> **Note:** This plugin currently supports **iOS only**. Android support is planned for a future release.
+Supports both **iOS** ([meta-wearables-dat-ios](https://github.com/facebook/meta-wearables-dat-ios)) and **Android** ([meta-wearables-dat-android](https://github.com/facebook/meta-wearables-dat-android)).
 
 ## Features
 
@@ -14,9 +14,9 @@ A Flutter plugin wrapping the [Meta Wearables Device Access Toolkit (DAT)](https
 
 ## Requirements
 
-- **iOS 16.0+**
+- **iOS 16.0+** / **Android API Level 31+**
 - **Flutter 3.29.0+**
-- **Xcode 15.0+**
+- **Xcode 15.0+** (for iOS)
 - **Meta AI app** installed on the test device with Developer Mode enabled
 - **Ray-Ban Meta** or **Meta Ray-Ban Display** glasses (or use the MockDeviceKit for testing)
 
@@ -85,6 +85,59 @@ Add the following entries to your `ios/Runner/Info.plist`:
     <key>TeamID</key>
     <string>YOUR_APPLE_TEAM_ID</string>
 </dict>
+```
+
+### Android Setup
+
+#### 1. Add the Meta Wearables DAT Android SDK
+
+The native Meta Wearables DAT Android SDK must be added to your project via the GitHub Maven repository:
+
+1. Add the repository to your `android/settings.gradle.kts`:
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        maven {
+            url = uri("https://maven.pkg.github.com/facebook/meta-wearables-dat-android")
+            credentials {
+                username = "" // not needed
+                password = System.getenv("GITHUB_TOKEN") ?: localProperties.getProperty("github_token")
+            }
+        }
+    }
+}
+```
+
+2. Add the SDK dependencies to your `android/app/build.gradle`:
+
+```gradle
+dependencies {
+    implementation("com.meta.wearable:mwdat-core:0.5.0")
+    implementation("com.meta.wearable:mwdat-camera:0.5.0")
+}
+```
+
+> **Note:** You need a GitHub Personal Access Token with `read:packages` scope. Set it as a `GITHUB_TOKEN` environment variable, or add `github_token=YOUR_TOKEN` to your `android/local.properties` file. See the [Android SDK documentation](https://github.com/facebook/meta-wearables-dat-android) for details.
+
+#### 2. Configure AndroidManifest.xml
+
+Add the following to your `android/app/src/main/AndroidManifest.xml`:
+
+```xml
+<manifest>
+    <!-- Required permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application>
+        <!-- Required: Your application ID from Wearables Developer Center -->
+        <meta-data
+            android:name="com.meta.wearable.mwdat.APPLICATION_ID"
+            android:value="your_app_id_here" />
+    </application>
+</manifest>
 ```
 
 ## Usage
@@ -247,6 +300,8 @@ if (devices.isNotEmpty) {
 
 ## Privacy
 
+### iOS
+
 To opt out of Meta analytics collection, add the following to your `Info.plist`:
 
 ```xml
@@ -260,8 +315,18 @@ To opt out of Meta analytics collection, add the following to your `Info.plist`:
 </dict>
 ```
 
+### Android
+
+To opt out of Meta analytics collection, add the following to your `AndroidManifest.xml`:
+
+```xml
+<meta-data
+    android:name="com.meta.wearable.mwdat.ANALYTICS_OPT_OUT"
+    android:value="true" />
+```
+
 ## License
 
 This package is licensed under the MIT License. See [LICENSE](LICENSE) for details.
 
-The Meta Wearables DAT iOS SDK is subject to Meta's own licensing terms.
+The Meta Wearables DAT iOS and Android SDKs are subject to Meta's own licensing terms.

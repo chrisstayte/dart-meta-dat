@@ -1,3 +1,8 @@
+## 0.2.0
+
+* Added Android platform support wrapping the Meta Wearables DAT Android SDK (v0.5.0).
+* Plugin now supports both iOS and Android platforms.
+
 ## 0.1.0
 
 * Initial release.
